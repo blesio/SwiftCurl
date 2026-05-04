@@ -136,13 +136,6 @@ struct SidebarView: View {
                 }
                 .menuStyle(.borderlessButton)
 
-                Button {
-                    store.deleteSelectedRequest()
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .disabled(store.selectedRequest == nil)
-
                 Spacer()
             }
             .buttonStyle(.borderless)
