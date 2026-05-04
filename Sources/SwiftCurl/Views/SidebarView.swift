@@ -21,7 +21,24 @@ struct SidebarView: View {
                                 .onTapGesture {
                                     store.selectRequest(selection)
                                 }
+                                .contextMenu {
+                                    Button {
+                                        store.duplicateRequest(projectID: project.id, requestID: request.id)
+                                    } label: {
+                                        Label("Duplicate Request", systemImage: "doc.on.doc")
+                                    }
+
+                                    Button(role: .destructive) {
+                                        store.selectRequest(selection)
+                                        store.deleteSelectedRequest()
+                                    } label: {
+                                        Label("Delete Request", systemImage: "trash")
+                                    }
+                                }
                                 .listRowBackground(Color.clear)
+                            }
+                            .onMove { source, destination in
+                                store.moveRequests(projectID: project.id, from: source, to: destination)
                             }
                         }
                     } header: {
@@ -74,6 +91,31 @@ struct SidebarView: View {
                     .disabled(store.selectedProject == nil)
                 } label: {
                     Label("Project", systemImage: "folder")
+                }
+                .menuStyle(.borderlessButton)
+
+                Menu {
+                    Button {
+                        store.addRequest()
+                    } label: {
+                        Label("New Request", systemImage: "plus")
+                    }
+
+                    Button {
+                        store.duplicateSelectedRequest()
+                    } label: {
+                        Label("Duplicate Request", systemImage: "doc.on.doc")
+                    }
+                    .disabled(store.selectedRequest == nil)
+
+                    Button(role: .destructive) {
+                        store.deleteSelectedRequest()
+                    } label: {
+                        Label("Delete Request", systemImage: "trash")
+                    }
+                    .disabled(store.selectedRequest == nil)
+                } label: {
+                    Label("Request", systemImage: "doc.text")
                 }
                 .menuStyle(.borderlessButton)
 

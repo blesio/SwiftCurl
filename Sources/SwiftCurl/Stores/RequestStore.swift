@@ -191,6 +191,39 @@ final class RequestStore {
         save()
     }
 
+    func duplicateSelectedRequest() {
+        guard let selection else { return }
+        duplicateRequest(projectID: selection.projectID, requestID: selection.requestID)
+    }
+
+    func duplicateRequest(projectID: UUID, requestID: UUID) {
+        guard let location = location(projectID: projectID, requestID: requestID) else { return }
+
+        let original = projects[location.project].requests[location.request]
+        var duplicate = original
+        duplicate.id = UUID()
+        duplicate.name = uniqueRequestName(original.name, in: projects[location.project])
+
+        let insertIndex = location.request + 1
+        projects[location.project].requests.insert(duplicate, at: insertIndex)
+
+        if let response = responses[original.id] {
+            responses[duplicate.id] = response
+        }
+
+        focusedProjectID = projectID
+        selection = RequestSelection(projectID: projectID, requestID: duplicate.id)
+        save()
+    }
+
+    func moveRequests(projectID: UUID, from source: IndexSet, to destination: Int) {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
+
+        projects[projectIndex].requests.move(fromOffsets: source, toOffset: destination)
+        focusedProjectID = projectID
+        save()
+    }
+
     func exportSelectedProject() {
         guard let project = selectedProject else {
             statusMessage = "No project selected"
@@ -374,6 +407,19 @@ final class RequestStore {
             counter += 1
         }
         return "\(baseName) \(counter)"
+    }
+
+    private func uniqueRequestName(_ name: String, in project: RESTProject) -> String {
+        let baseName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Request" : name
+        let copyName = "\(baseName) Copy"
+        let existingNames = Set(project.requests.map(\.name))
+        guard existingNames.contains(copyName) else { return copyName }
+
+        var counter = 2
+        while existingNames.contains("\(copyName) \(counter)") {
+            counter += 1
+        }
+        return "\(copyName) \(counter)"
     }
 
     private func safeFileName(_ name: String) -> String {
