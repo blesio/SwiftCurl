@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @Bindable var store: RequestStore
@@ -35,10 +36,18 @@ struct SidebarView: View {
                                         Label("Delete Request", systemImage: "trash")
                                     }
                                 }
+                                .onDrag {
+                                    NSItemProvider(object: request.id.uuidString as NSString)
+                                }
+                                .onDrop(
+                                    of: RequestDropDelegate.supportedTypes,
+                                    delegate: RequestDropDelegate(
+                                        store: store,
+                                        destinationProjectID: project.id,
+                                        targetRequestID: request.id
+                                    )
+                                )
                                 .listRowBackground(Color.clear)
-                            }
-                            .onMove { source, destination in
-                                store.moveRequests(projectID: project.id, from: source, to: destination)
                             }
                         }
                     } header: {
@@ -52,6 +61,14 @@ struct SidebarView: View {
                             toggleCollapse: {
                                 toggleProjectCollapse(project.id)
                             }
+                        )
+                        .onDrop(
+                            of: RequestDropDelegate.supportedTypes,
+                            delegate: RequestDropDelegate(
+                                store: store,
+                                destinationProjectID: project.id,
+                                targetRequestID: nil
+                            )
                         )
                     }
                 }
@@ -139,6 +156,51 @@ struct SidebarView: View {
         } else {
             collapsedProjectIDs.insert(projectID)
         }
+    }
+}
+
+private struct RequestDropDelegate: DropDelegate {
+    static let supportedTypes: [UTType] = [.plainText, .text]
+
+    let store: RequestStore
+    let destinationProjectID: UUID
+    let targetRequestID: UUID?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: Self.supportedTypes)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let provider = info.itemProviders(for: Self.supportedTypes).first else { return false }
+        let typeIdentifier = provider.registeredTypeIdentifiers.first { identifier in
+            identifier == UTType.plainText.identifier || identifier == UTType.text.identifier
+        } ?? UTType.plainText.identifier
+
+        provider.loadItem(forTypeIdentifier: typeIdentifier, options: nil) { item, _ in
+            let rawValue: String?
+            if let data = item as? Data {
+                rawValue = String(data: data, encoding: .utf8)
+            } else if let string = item as? NSString {
+                rawValue = string as String
+            } else {
+                rawValue = item as? String
+            }
+
+            guard let rawValue,
+                  let requestID = UUID(uuidString: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return
+            }
+
+            Task { @MainActor in
+                store.moveRequest(
+                    requestID: requestID,
+                    toProjectID: destinationProjectID,
+                    before: targetRequestID
+                )
+            }
+        }
+
+        return true
     }
 }
 

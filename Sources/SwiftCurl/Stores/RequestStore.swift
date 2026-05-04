@@ -224,6 +224,37 @@ final class RequestStore {
         save()
     }
 
+    func moveRequest(requestID: UUID, toProjectID destinationProjectID: UUID, before targetRequestID: UUID?) {
+        guard requestID != targetRequestID,
+              let sourceProjectIndex = projects.firstIndex(where: { project in
+                  project.requests.contains { $0.id == requestID }
+              }),
+              let sourceRequestIndex = projects[sourceProjectIndex].requests.firstIndex(where: { $0.id == requestID }),
+              projects.contains(where: { $0.id == destinationProjectID }) else {
+            return
+        }
+
+        let request = projects[sourceProjectIndex].requests.remove(at: sourceRequestIndex)
+
+        guard let destinationProjectIndex = projects.firstIndex(where: { $0.id == destinationProjectID }) else {
+            projects[sourceProjectIndex].requests.insert(request, at: sourceRequestIndex)
+            return
+        }
+
+        let insertionIndex: Int
+        if let targetRequestID,
+           let targetIndex = projects[destinationProjectIndex].requests.firstIndex(where: { $0.id == targetRequestID }) {
+            insertionIndex = targetIndex
+        } else {
+            insertionIndex = projects[destinationProjectIndex].requests.endIndex
+        }
+
+        projects[destinationProjectIndex].requests.insert(request, at: insertionIndex)
+        focusedProjectID = destinationProjectID
+        selection = RequestSelection(projectID: destinationProjectID, requestID: request.id)
+        save()
+    }
+
     func exportSelectedProject() {
         guard let project = selectedProject else {
             statusMessage = "No project selected"
