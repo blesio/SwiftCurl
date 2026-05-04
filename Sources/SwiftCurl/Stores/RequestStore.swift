@@ -50,10 +50,23 @@ final class RequestStore {
     }
 
     func bindingForSelectedRequest() -> BindingBox<RESTRequest>? {
-        guard let location = selectedLocation else { return nil }
+        guard let selection else { return nil }
+        let projectID = selection.projectID
+        let requestID = selection.requestID
+
         return BindingBox(
-            get: { self.projects[location.project].requests[location.request] },
+            get: {
+                guard let location = self.location(projectID: projectID, requestID: requestID) else {
+                    return RESTRequest(name: "")
+                }
+
+                return self.projects[location.project].requests[location.request]
+            },
             set: { newValue in
+                guard let location = self.location(projectID: projectID, requestID: requestID) else {
+                    return
+                }
+
                 self.projects[location.project].requests[location.request] = newValue
                 self.save()
             }
@@ -271,10 +284,15 @@ final class RequestStore {
 
     private var selectedLocation: (project: Int, request: Int)? {
         guard let selection else { return nil }
-        guard let projectIndex = projects.firstIndex(where: { $0.id == selection.projectID }),
-              let requestIndex = projects[projectIndex].requests.firstIndex(where: { $0.id == selection.requestID }) else {
+        return location(projectID: selection.projectID, requestID: selection.requestID)
+    }
+
+    private func location(projectID: UUID, requestID: UUID) -> (project: Int, request: Int)? {
+        guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }),
+              let requestIndex = projects[projectIndex].requests.firstIndex(where: { $0.id == requestID }) else {
             return nil
         }
+
         return (projectIndex, requestIndex)
     }
 
