@@ -19,7 +19,7 @@ struct SidebarView: View {
                                 )
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    store.selection = selection
+                                    store.selectRequest(selection)
                                 }
                                 .listRowBackground(Color.clear)
                             }
@@ -28,6 +28,10 @@ struct SidebarView: View {
                         ProjectHeaderView(
                             nameBox: store.bindingForProjectName(projectID: project.id),
                             isCollapsed: collapsedProjectIDs.contains(project.id),
+                            isFocused: store.selectedProjectID == project.id,
+                            selectProject: {
+                                store.focusProject(project.id)
+                            },
                             toggleCollapse: {
                                 toggleProjectCollapse(project.id)
                             }
@@ -99,6 +103,8 @@ struct SidebarView: View {
 private struct ProjectHeaderView: View {
     let nameBox: BindingBox<String>
     let isCollapsed: Bool
+    let isFocused: Bool
+    let selectProject: () -> Void
     let toggleCollapse: () -> Void
 
     var body: some View {
@@ -116,6 +122,16 @@ private struct ProjectHeaderView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 4)
+        .contentShape(Rectangle())
+        .background {
+            if isFocused {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.accentColor.opacity(0.10))
+            }
+        }
+        .onTapGesture(perform: selectProject)
     }
 }
 

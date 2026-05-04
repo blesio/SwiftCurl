@@ -7,6 +7,7 @@ import Observation
 final class RequestStore {
     var projects: [RESTProject] = []
     var selection: RequestSelection?
+    var focusedProjectID: UUID?
     var responses: [UUID: ResponseRecord] = [:]
     var sendingRequestIDs: Set<UUID> = []
     var statusMessage = ""
@@ -21,10 +22,11 @@ final class RequestStore {
     }
 
     var selectedProjectID: UUID? {
-        get { selection?.projectID ?? projects.first?.id }
+        get { selection?.projectID ?? focusedProjectID ?? projects.first?.id }
         set {
             guard let id = newValue,
                   let project = projects.first(where: { $0.id == id }) else { return }
+            focusedProjectID = id
             selection = project.requests.first.map { RequestSelection(projectID: id, requestID: $0.id) }
         }
     }
@@ -35,7 +37,7 @@ final class RequestStore {
     }
 
     var selectedProject: RESTProject? {
-        guard let projectID = selection?.projectID ?? projects.first?.id else { return nil }
+        guard let projectID = selectedProjectID else { return nil }
         return projects.first { $0.id == projectID }
     }
 
@@ -59,14 +61,12 @@ final class RequestStore {
                 guard let location = self.location(projectID: projectID, requestID: requestID) else {
                     return RESTRequest(name: "")
                 }
-
                 return self.projects[location.project].requests[location.request]
             },
             set: { newValue in
                 guard let location = self.location(projectID: projectID, requestID: requestID) else {
                     return
                 }
-
                 self.projects[location.project].requests[location.request] = newValue
                 self.save()
             }
@@ -92,11 +92,19 @@ final class RequestStore {
             projects = workspace.projects
             responses = workspace.responses
             if let project = projects.first, let request = project.requests.first {
+                focusedProjectID = project.id
                 selection = RequestSelection(projectID: project.id, requestID: request.id)
+            } else if let project = projects.first {
+                focusedProjectID = project.id
+                selection = nil
             }
             statusMessage = "Ready"
         } catch {
             projects = RequestPersistence.sampleProjects
+            if let project = projects.first, let request = project.requests.first {
+                focusedProjectID = project.id
+                selection = RequestSelection(projectID: project.id, requestID: request.id)
+            }
             statusMessage = "Could not load saved projects: \(error.localizedDescription)"
         }
     }
@@ -113,6 +121,7 @@ final class RequestStore {
     func addProject() {
         let project = RESTProject(name: "New Project", requests: [RESTRequest(name: "New Request")])
         projects.append(project)
+        focusedProjectID = project.id
         selection = RequestSelection(projectID: project.id, requestID: project.requests[0].id)
         save()
     }
@@ -123,12 +132,24 @@ final class RequestStore {
             return
         }
 
-        let projectID = selection?.projectID ?? projects[0].id
+        let projectID = selectedProjectID ?? projects[0].id
         guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
         let request = RESTRequest(name: "New Request")
         projects[projectIndex].requests.append(request)
+        focusedProjectID = projects[projectIndex].id
         selection = RequestSelection(projectID: projects[projectIndex].id, requestID: request.id)
         save()
+    }
+
+    func focusProject(_ projectID: UUID) {
+        guard projects.contains(where: { $0.id == projectID }) else { return }
+        focusedProjectID = projectID
+        selection = nil
+    }
+
+    func selectRequest(_ selection: RequestSelection) {
+        focusedProjectID = selection.projectID
+        self.selection = selection
     }
 
     func deleteSelectedProject() {
@@ -146,17 +167,27 @@ final class RequestStore {
             sendingRequestIDs.remove(requestID)
         }
 
-        if projects.indices.contains(projectIndex), let nextRequest = projects[projectIndex].requests.first {
-            selection = RequestSelection(projectID: projects[projectIndex].id, requestID: nextRequest.id)
-        } else if let previousProject = projects.prefix(projectIndex).last, let previousRequest = previousProject.requests.first {
-            selection = RequestSelection(projectID: previousProject.id, requestID: previousRequest.id)
-        } else if let firstProject = projects.first, let firstRequest = firstProject.requests.first {
-            selection = RequestSelection(projectID: firstProject.id, requestID: firstRequest.id)
+        focusAfterDeletingProject(at: projectIndex)
+        statusMessage = "Project deleted"
+        save()
+    }
+
+    func deleteSelectedRequest() {
+        guard let location = selectedLocation else { return }
+        let projectID = projects[location.project].id
+        let requestID = projects[location.project].requests[location.request].id
+
+        projects[location.project].requests.remove(at: location.request)
+        responses[requestID] = nil
+        sendingRequestIDs.remove(requestID)
+        focusedProjectID = projectID
+
+        if let next = projects[location.project].requests.first {
+            selection = RequestSelection(projectID: projectID, requestID: next.id)
         } else {
             selection = nil
         }
 
-        statusMessage = "Project deleted"
         save()
     }
 
@@ -219,20 +250,6 @@ final class RequestStore {
         }
     }
 
-    func deleteSelectedRequest() {
-        guard let location = selectedLocation else { return }
-        let requestID = projects[location.project].requests[location.request].id
-        projects[location.project].requests.remove(at: location.request)
-        responses[requestID] = nil
-        sendingRequestIDs.remove(requestID)
-        if let next = projects[location.project].requests.first {
-            selection = RequestSelection(projectID: projects[location.project].id, requestID: next.id)
-        } else {
-            selection = nil
-        }
-        save()
-    }
-
     func importCurlIntoSelectedProject() {
         guard let imported = CurlCodec.parse(curlImportText) else {
             statusMessage = "Could not parse cURL command"
@@ -241,14 +258,16 @@ final class RequestStore {
 
         guard !projects.isEmpty else {
             projects = [RESTProject(name: "Imported", requests: [imported])]
+            focusedProjectID = projects[0].id
             selection = RequestSelection(projectID: projects[0].id, requestID: imported.id)
             save()
             return
         }
 
-        let projectID = selection?.projectID ?? projects[0].id
+        let projectID = selectedProjectID ?? projects[0].id
         guard let projectIndex = projects.firstIndex(where: { $0.id == projectID }) else { return }
         projects[projectIndex].requests.append(imported)
+        focusedProjectID = projects[projectIndex].id
         selection = RequestSelection(projectID: projects[projectIndex].id, requestID: imported.id)
         curlImportText = ""
         save()
@@ -296,9 +315,28 @@ final class RequestStore {
         return (projectIndex, requestIndex)
     }
 
+    private func focusAfterDeletingProject(at deletedIndex: Int) {
+        if projects.indices.contains(deletedIndex) {
+            focusProjectAfterMutation(projects[deletedIndex])
+        } else if let previousProject = projects.prefix(deletedIndex).last {
+            focusProjectAfterMutation(previousProject)
+        } else if let firstProject = projects.first {
+            focusProjectAfterMutation(firstProject)
+        } else {
+            focusedProjectID = nil
+            selection = nil
+        }
+    }
+
+    private func focusProjectAfterMutation(_ project: RESTProject) {
+        focusedProjectID = project.id
+        selection = project.requests.first.map {
+            RequestSelection(projectID: project.id, requestID: $0.id)
+        }
+    }
+
     private func appendImportedProject(_ archive: ProjectArchive) {
         var project = archive.project
-        let oldProjectID = project.id
         project.id = UUID()
         project.name = uniqueProjectName(project.name)
 
@@ -314,6 +352,7 @@ final class RequestStore {
 
         projects.append(project)
         responses.merge(remappedResponses) { _, imported in imported }
+        focusedProjectID = project.id
 
         if let firstRequest = project.requests.first {
             selection = RequestSelection(projectID: project.id, requestID: firstRequest.id)
@@ -323,8 +362,6 @@ final class RequestStore {
 
         statusMessage = "Imported \(archive.project.name)"
         save()
-
-        _ = oldProjectID
     }
 
     private func uniqueProjectName(_ name: String) -> String {
