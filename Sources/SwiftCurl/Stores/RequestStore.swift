@@ -16,6 +16,7 @@ final class RequestStore {
 
     private let persistence = RequestPersistence()
     private let networkClient = NetworkClient()
+    private var saveTask: Task<Void, Never>?
 
     init() {
         load()
@@ -110,12 +111,47 @@ final class RequestStore {
     }
 
     func save() {
-        do {
-            try persistence.save(projects: projects, responses: responses)
-            statusMessage = "Saved"
-        } catch {
-            statusMessage = "Save failed: \(error.localizedDescription)"
+        let projectsSnapshot = projects
+        let responsesSnapshot = responses
+        let storageURL = persistence.storageURL
+
+        saveTask?.cancel()
+        saveTask = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(450))
+            } catch {
+                return
+            }
+
+            let result = await Self.persist(
+                projects: projectsSnapshot,
+                responses: responsesSnapshot,
+                storageURL: storageURL
+            )
+
+            guard !Task.isCancelled else { return }
+            switch result {
+            case .success:
+                statusMessage = "Saved"
+            case .failure(let error):
+                statusMessage = "Save failed: \(error.localizedDescription)"
+            }
         }
+    }
+
+    private nonisolated static func persist(
+        projects: [RESTProject],
+        responses: [UUID: ResponseRecord],
+        storageURL: URL
+    ) async -> Result<Void, Error> {
+        await Task.detached(priority: .utility) {
+            do {
+                try RequestPersistence.save(projects: projects, responses: responses, to: storageURL)
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }.value
     }
 
     func addProject() {

@@ -27,8 +27,11 @@ struct RequestPersistence {
     }
 
     func save(projects: [RESTProject], responses: [UUID: ResponseRecord]) throws {
-        let url = storageURL
-        try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Self.save(projects: projects, responses: responses, to: storageURL)
+    }
+
+    static func save(projects: [RESTProject], responses: [UUID: ResponseRecord], to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(StoredWorkspace(projects: projects, responses: responses))

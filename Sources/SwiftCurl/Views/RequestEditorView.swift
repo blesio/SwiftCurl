@@ -14,7 +14,6 @@ struct RequestEditorView: View {
             VSplitView {
                 RequestOptionsTabsView(request: $request, store: store)
                     .frame(minHeight: 240, idealHeight: 315, maxHeight: 380)
-                    .onChange(of: request) { _, _ in store.save() }
 
                 ResponseView(response: store.selectedResponse, isSending: store.isSelectedRequestSending)
                     .frame(minHeight: 360, idealHeight: 620)
