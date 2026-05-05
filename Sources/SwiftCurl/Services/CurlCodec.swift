@@ -8,6 +8,10 @@ enum CurlCodec {
             parts += ["-H", shellQuote("\(header.name): \(header.value)")]
         }
 
+        if request.bodyMode == .formURLEncoded, !hasHeader(named: "Content-Type", in: request.headers) {
+            parts += ["-H", shellQuote("Content-Type: application/x-www-form-urlencoded")]
+        }
+
         switch request.auth.kind {
         case .none:
             break
@@ -23,8 +27,16 @@ enum CurlCodec {
             }
         }
 
-        if !request.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            parts += ["--data-raw", shellQuote(request.body)]
+        switch request.bodyMode {
+        case .raw:
+            if !request.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts += ["--data-raw", shellQuote(request.body)]
+            }
+        case .formURLEncoded:
+            let body = NetworkClient.formURLEncodedBody(from: request.urlEncodedBodyItems)
+            if !body.isEmpty {
+                parts += ["--data-raw", shellQuote(body)]
+            }
         }
 
         return parts.joined(separator: " ")
@@ -38,6 +50,7 @@ enum CurlCodec {
         var request = RESTRequest(name: "Imported Request")
         var headers: [HeaderItem] = []
         var body = ""
+        var urlEncodedBodyItems: [HeaderItem] = []
         var index = 0
 
         while index < tokens.count {
@@ -65,7 +78,18 @@ enum CurlCodec {
                 request.auth.username = pieces.first.map(String.init) ?? ""
                 request.auth.password = pieces.dropFirst().first.map(String.init) ?? ""
             case "-d", "--data", "--data-raw", "--data-binary", "--data-ascii":
-                body = nextValue(tokens, index: &index)
+                let value = nextValue(tokens, index: &index)
+                body = body.isEmpty ? value : "\(body)&\(value)"
+                if request.method == .get {
+                    request.method = .post
+                }
+            case "--data-urlencode":
+                let value = nextValue(tokens, index: &index)
+                if let item = parseFormURLEncodedPair(value) {
+                    urlEncodedBodyItems.append(item)
+                } else {
+                    body = body.isEmpty ? value : "\(body)&\(value)"
+                }
                 if request.method == .get {
                     request.method = .post
                 }
@@ -79,7 +103,19 @@ enum CurlCodec {
         }
 
         request.headers = headers
-        request.body = prettyPrintedJSON(body) ?? body
+        if !urlEncodedBodyItems.isEmpty {
+            request.bodyMode = .formURLEncoded
+            request.urlEncodedBodyItems = urlEncodedBodyItems
+            request.body = body
+        } else if hasFormURLEncodedContentType(in: headers),
+                  let items = parseFormURLEncodedBody(body),
+                  !items.isEmpty {
+            request.bodyMode = .formURLEncoded
+            request.urlEncodedBodyItems = items
+            request.body = body
+        } else {
+            request.body = prettyPrintedJSON(body) ?? body
+        }
         return request
     }
 
@@ -88,7 +124,7 @@ enum CurlCodec {
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
         let object = try? JSONSerialization.jsonObject(with: data)
         guard let object else { return nil }
-        let formatted = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        let formatted = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
         return formatted.flatMap { String(data: $0, encoding: .utf8) }
     }
 
@@ -108,6 +144,36 @@ enum CurlCodec {
 
         components.queryItems = queryItems.isEmpty ? nil : queryItems
         return components.url?.absoluteString ?? request.url
+    }
+
+    private static func hasHeader(named name: String, in headers: [HeaderItem]) -> Bool {
+        headers.contains { header in
+            header.isEnabled && header.name.caseInsensitiveCompare(name) == .orderedSame
+        }
+    }
+
+    private static func hasFormURLEncodedContentType(in headers: [HeaderItem]) -> Bool {
+        headers.contains { header in
+            header.name.caseInsensitiveCompare("Content-Type") == .orderedSame
+                && header.value.lowercased().contains("application/x-www-form-urlencoded")
+        }
+    }
+
+    private static func parseFormURLEncodedBody(_ body: String) -> [HeaderItem]? {
+        guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let items = body.split(separator: "&", omittingEmptySubsequences: false).compactMap { parseFormURLEncodedPair(String($0)) }
+        return items.isEmpty ? nil : items
+    }
+
+    private static func parseFormURLEncodedPair(_ pair: String) -> HeaderItem? {
+        guard let separator = pair.firstIndex(of: "=") else { return nil }
+        let name = String(pair[..<separator])
+        let value = String(pair[pair.index(after: separator)...])
+        return HeaderItem(name: formPercentDecoded(name), value: formPercentDecoded(value))
+    }
+
+    private static func formPercentDecoded(_ string: String) -> String {
+        string.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? string
     }
 
     private static func shellQuote(_ string: String) -> String {

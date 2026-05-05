@@ -28,6 +28,13 @@ enum APIKeyLocation: String, CaseIterable, Codable, Identifiable {
     var id: String { rawValue }
 }
 
+enum BodyMode: String, CaseIterable, Codable, Identifiable {
+    case raw = "Raw"
+    case formURLEncoded = "x-www-form-urlencoded"
+
+    var id: String { rawValue }
+}
+
 struct AuthConfig: Codable, Equatable {
     var kind: AuthKind = .none
     var username = ""
@@ -65,7 +72,9 @@ struct RESTRequest: Identifiable, Codable, Equatable {
     var queryItems: [HeaderItem] = []
     var auth = AuthConfig()
     var settings = RequestSettings()
+    var bodyMode: BodyMode = .raw
     var body = ""
+    var urlEncodedBodyItems: [HeaderItem] = []
     var notes = ""
 
     init(id: UUID = UUID(), name: String) {
@@ -82,7 +91,9 @@ struct RESTRequest: Identifiable, Codable, Equatable {
         case queryItems
         case auth
         case settings
+        case bodyMode
         case body
+        case urlEncodedBodyItems
         case notes
     }
 
@@ -96,7 +107,9 @@ struct RESTRequest: Identifiable, Codable, Equatable {
         queryItems = try container.decodeIfPresent([HeaderItem].self, forKey: .queryItems) ?? []
         auth = try container.decodeIfPresent(AuthConfig.self, forKey: .auth) ?? AuthConfig()
         settings = try container.decodeIfPresent(RequestSettings.self, forKey: .settings) ?? RequestSettings()
+        bodyMode = try container.decodeIfPresent(BodyMode.self, forKey: .bodyMode) ?? .raw
         body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
+        urlEncodedBodyItems = try container.decodeIfPresent([HeaderItem].self, forKey: .urlEncodedBodyItems) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
     }
 }
@@ -114,6 +127,7 @@ struct RESTProject: Identifiable, Codable, Equatable {
 }
 
 struct ResponseRecord: Codable, Equatable {
+    var id = UUID()
     var statusCode: Int?
     var duration: TimeInterval
     var headers: [String: String]
@@ -144,6 +158,7 @@ struct ResponseRecord: Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
+        case id
         case statusCode
         case duration
         case headers
@@ -156,6 +171,7 @@ struct ResponseRecord: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         statusCode = try container.decodeIfPresent(Int.self, forKey: .statusCode)
         duration = try container.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
         headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]

@@ -70,7 +70,10 @@ struct ResponseView: View {
                     if response.isAudio {
                         AudioResponseView(response: response)
                     } else {
-                        ResponseBodyTextView(text: response.body.isEmpty ? "No response body" : response.body)
+                        ResponseBodyTextView(
+                            text: response.body.isEmpty ? "No response body" : response.body,
+                            version: response.id
+                        )
                             .overlay(alignment: .topTrailing) {
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(response.bodyByteCount), countStyle: .file))
                                     .font(.caption)
@@ -342,6 +345,7 @@ private final class AudioPlaybackModel {
 
 private struct ResponseBodyTextView: NSViewRepresentable {
     let text: String
+    let version: UUID
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -361,11 +365,13 @@ private struct ResponseBodyTextView: NSViewRepresentable {
         textView.textColor = .textColor
         textView.textContainerInset = NSSize(width: 14, height: 14)
         textView.textContainer?.lineFragmentPadding = 0
+        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.textContainer?.widthTracksTextView = true
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.string = text
+        context.coordinator.renderedVersion = version
 
         scrollView.documentView = textView
         return scrollView
@@ -373,8 +379,17 @@ private struct ResponseBodyTextView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
-        if textView.string != text {
+        if context.coordinator.renderedVersion != version {
             textView.string = text
+            context.coordinator.renderedVersion = version
         }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var renderedVersion: UUID?
     }
 }

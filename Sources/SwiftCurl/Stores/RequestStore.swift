@@ -343,6 +343,7 @@ final class RequestStore {
 
     func formatSelectedJSONBody() {
         guard let location = selectedLocation else { return }
+        guard projects[location.project].requests[location.request].bodyMode == .raw else { return }
         let body = projects[location.project].requests[location.request].body
         guard let formatted = CurlCodec.prettyPrintedJSON(body) else {
             statusMessage = "Body is not valid JSON"

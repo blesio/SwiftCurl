@@ -105,27 +105,47 @@ private struct RequestBodyTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("JSON Body")
+                Text("Body")
                     .font(.headline)
 
                 Spacer()
 
-                Button {
-                    store.formatSelectedJSONBody()
-                } label: {
-                    Label("Format JSON", systemImage: "curlybraces")
+                if request.bodyMode == .raw {
+                    Button {
+                        store.formatSelectedJSONBody()
+                    } label: {
+                        Label("Format JSON", systemImage: "curlybraces")
+                    }
                 }
             }
 
-            TextEditor(text: $request.body)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .background(.regularMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(.separator)
+            Picker("Body type", selection: $request.bodyMode) {
+                ForEach(BodyMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
+            }
+            .pickerStyle(.segmented)
+
+            Group {
+                switch request.bodyMode {
+                case .raw:
+                    TextEditor(text: $request.body)
+                        .font(.system(.body, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(.separator)
+                        }
+                case .formURLEncoded:
+                    Form {
+                        KeyValueEditorView(title: "Form Fields", items: $request.urlEncodedBodyItems)
+                    }
+                    .formStyle(.grouped)
+                    .scrollContentBackground(.hidden)
+                }
+            }
         }
         .padding()
     }
