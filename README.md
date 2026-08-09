@@ -20,6 +20,7 @@ SwiftCurl is a native macOS REST and cURL client built with SwiftUI. It is meant
 - Save response bodies to disk
 - Cached responses are restored when the app reopens
 - Project import/export
+- Project-scoped `{{variables}}` with automatic capture from response JSON or headers
 - Ad-hoc signed `.app` packaging script
 
 ## Requirements

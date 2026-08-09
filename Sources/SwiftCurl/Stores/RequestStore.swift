@@ -87,6 +87,18 @@ final class RequestStore {
         )
     }
 
+    func bindingForSelectedProjectVariables() -> BindingBox<[HeaderItem]>? {
+        guard let projectID = selectedProjectID else { return nil }
+        return BindingBox(
+            get: { self.projects.first { $0.id == projectID }?.variables ?? [] },
+            set: { newValue in
+                guard let index = self.projects.firstIndex(where: { $0.id == projectID }) else { return }
+                self.projects[index].variables = newValue
+                self.save()
+            }
+        )
+    }
+
     func load() {
         do {
             let workspace = try persistence.load()
@@ -390,15 +402,31 @@ final class RequestStore {
     }
 
     func sendSelectedRequest() async {
-        guard let request = selectedRequest else { return }
+        guard let request = selectedRequest,
+              let projectIndex = projects.firstIndex(where: { $0.requests.contains { $0.id == request.id } }) else { return }
         let requestID = request.id
+        let resolvedRequest = ProjectVariables.resolving(request, with: projects[projectIndex].variables)
         sendingRequestIDs.insert(requestID)
         responses[requestID] = nil
         statusMessage = "Sending..."
-        let response = await networkClient.send(request)
+        let response = await networkClient.send(resolvedRequest)
         responses[requestID] = response
+        let captured = ProjectVariables.capturedValues(from: response, rules: request.variableCaptures)
+        for (name, value) in captured {
+            if let index = projects[projectIndex].variables.firstIndex(where: { $0.name == name }) {
+                projects[projectIndex].variables[index].value = value
+            } else {
+                projects[projectIndex].variables.append(HeaderItem(name: name, value: value))
+            }
+        }
         sendingRequestIDs.remove(requestID)
-        statusMessage = response.errorMessage == nil ? "Request complete" : "Request failed"
+        if response.errorMessage != nil {
+            statusMessage = "Request failed"
+        } else if captured.isEmpty {
+            statusMessage = "Request complete"
+        } else {
+            statusMessage = "Request complete · updated \(captured.count) variable\(captured.count == 1 ? "" : "s")"
+        }
         save()
     }
 

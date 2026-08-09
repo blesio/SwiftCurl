@@ -49,6 +49,21 @@ struct RequestSettings: Codable, Equatable {
     var allowsInvalidSSLCertificates = false
 }
 
+enum VariableCaptureSource: String, CaseIterable, Codable, Identifiable {
+    case jsonBody = "JSON body"
+    case responseHeader = "Response header"
+
+    var id: String { rawValue }
+}
+
+struct VariableCapture: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var variableName = ""
+    var source: VariableCaptureSource = .jsonBody
+    var path = ""
+    var isEnabled = true
+}
+
 struct HeaderItem: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
@@ -76,6 +91,7 @@ struct RESTRequest: Identifiable, Codable, Equatable {
     var body = ""
     var urlEncodedBodyItems: [HeaderItem] = []
     var notes = ""
+    var variableCaptures: [VariableCapture] = []
 
     init(id: UUID = UUID(), name: String) {
         self.id = id
@@ -95,6 +111,7 @@ struct RESTRequest: Identifiable, Codable, Equatable {
         case body
         case urlEncodedBodyItems
         case notes
+        case variableCaptures
     }
 
     init(from decoder: Decoder) throws {
@@ -111,6 +128,7 @@ struct RESTRequest: Identifiable, Codable, Equatable {
         body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
         urlEncodedBodyItems = try container.decodeIfPresent([HeaderItem].self, forKey: .urlEncodedBodyItems) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        variableCaptures = try container.decodeIfPresent([VariableCapture].self, forKey: .variableCaptures) ?? []
     }
 }
 
@@ -118,11 +136,23 @@ struct RESTProject: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
     var requests: [RESTRequest]
+    var variables: [HeaderItem]
 
-    init(id: UUID = UUID(), name: String, requests: [RESTRequest] = []) {
+    init(id: UUID = UUID(), name: String, requests: [RESTRequest] = [], variables: [HeaderItem] = []) {
         self.id = id
         self.name = name
         self.requests = requests
+        self.variables = variables
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, requests, variables }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        requests = try container.decodeIfPresent([RESTRequest].self, forKey: .requests) ?? []
+        variables = try container.decodeIfPresent([HeaderItem].self, forKey: .variables) ?? []
     }
 }
 

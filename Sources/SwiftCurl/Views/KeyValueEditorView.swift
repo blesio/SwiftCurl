@@ -18,7 +18,9 @@ struct KeyValueEditorView: View {
                         .frame(width: 20)
 
                     TextField("Name", text: $item.name)
+                        .textFieldStyle(.roundedBorder)
                     TextField("Value", text: $item.value)
+                        .textFieldStyle(.roundedBorder)
 
                     Button {
                         items.removeAll { $0.id == item.id }

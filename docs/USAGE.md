@@ -20,6 +20,16 @@ Each request has tabs for:
 
 Use `Command + Return` or the Send button to run the selected request.
 
+## Project Variables
+
+Open a request's Variables tab to add values shared by every request in its project. Reference a value in a URL, query parameter, header, authentication field, or body with `{{name}}`, for example `https://{{server}}/api`. In the Bearer token field, enter `{{LoginToken}}`.
+
+The same tab can capture a value after a request completes. Choose JSON body and enter a path such as `LoginToken`, `data.token`, or `items[0].id`; alternatively choose Response header and enter its name. A single JSON key also searches nested objects. The variable name may be left empty, in which case the last path component or header name is used automatically. The captured value creates or updates the project variable.
+
+Captured JSON arrays are expanded into numbered project variables. For example, `"UserIds": [27, 42, 81]` creates `UserIds = 27`, `UserIds1 = 42`, and `UserIds2 = 81`. A one-item array creates only `UserIds`. Use an explicit path such as `UserIds[1]` when only a particular item is required.
+
+Paths can also project a property across an array of objects. For example, `Value.User.AgentInfoList.Extension` collects the `Extension` value from every item and creates `Extension`, `Extension1`, `Extension2`, and so on. Use `Value.User.AgentInfoList[1].Extension` to capture only one array item.
+
 ## Authentication
 
 SwiftCurl supports:
